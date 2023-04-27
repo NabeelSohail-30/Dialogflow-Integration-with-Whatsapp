@@ -1,19 +1,24 @@
 const express = require("express");
 const body_parser = require("body-parser");
 const axios = require("axios");
+const uuid = require('uuid');
 require('dotenv').config();
 
 const app = express().use(body_parser.json());
 
+app.get('/', (req, res) => {
+    res.sendStatus(200);
+});
+
+app.get('/ping', (req, res) => {
+    res.send('ping back');
+});
+
 const token = process.env.TOKEN;
 const mytoken = process.env.MYTOKEN;
 const dialogflowProjectId = process.env.DIALOGFLOW_PROJECT_ID;
-const dialogflowSessionId = process.env.DIALOGFLOW_SESSION_ID;
+const dialogflowSessionId = uuid.v4();
 const dialogflowSessionClient = require('dialogflow').SessionsClient;
-
-app.listen(process.env.PORT, () => {
-    console.log("webhook is listening");
-});
 
 //to verify the callback url from dashboard side - cloud api side
 app.get("/webhook", (req, res) => {
@@ -37,7 +42,7 @@ app.post('/dialogflow-fulfillment', async (req, res) => {
 
     console.log(`Received Dialogflow fulfillment request for intent '${intent}' and text '${text}'`);
 
-    if (intent === 'welcome') {
+    if (intent === 'Default Welcome Intent') {
         // Respond to welcome intent
         const responseText = 'Hello! How can I assist you today?';
         res.json({ fulfillmentText: responseText });
@@ -116,32 +121,13 @@ app.post("/webhook", (req, res) => {
             res.sendStatus(404);
         }
     }
-
-    app.get("/", (req, res) => {
-        res.status(200).send("Hello, this is webhook setup");
-    });
-
-    // Handle Dialogflow fulfillment messages for welcome and about intents
-    function handleDialogflowFulfillment(req, res) {
-        const intentName = req.body.queryResult.intent.displayName;
-
-        if (intentName === "welcome") {
-            res.json({
-                fulfillmentText: "Hello! Welcome to my chatbot. How can I assist you today?"
-            });
-        } else if (intentName === "about") {
-            res.json({
-                fulfillmentText: "I am a chatbot created using Dialogflow and integrated with WhatsApp using Node.js."
-            });
-        } else {
-            res.json({
-                fulfillmentText: "Sorry, I didn't understand your request."
-            });
-        }
+    else {
+        res.sendStatus(404);
     }
+});
 
-    // Start server
-    app.listen(process.env.PORT, () => {
-        console.log("Webhook is listening");
-    });
+// Start server
+const port = process.env.PORT || 5005;
+app.listen(port, () => {
+    console.log(`Server running on port ${port}`);
 });
