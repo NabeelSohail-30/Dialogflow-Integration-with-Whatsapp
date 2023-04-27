@@ -42,17 +42,45 @@ app.post('/dialogflow-fulfillment', async (req, res) => {
 
     console.log(`Received Dialogflow fulfillment request for intent '${intent}' and text '${text}'`);
 
-    if (intent === 'Default Welcome Intent') {
-        // Respond to welcome intent
-        const responseText = 'Hello! How can I assist you today?';
-        res.json({ fulfillmentText: responseText });
-    } else if (intent === 'about') {
-        // Respond to about intent
-        const responseText = 'I am a webhook integrated with Dialogflow.';
-        res.json({ fulfillmentText: responseText });
-    } else {
-        // Unrecognized intent
-        res.json({ fulfillmentText: "I'm sorry, I don't understand." });
+    switch (intent) {
+        case 'Default Welcome Intent':
+            {
+                res.send({
+                    fulfillmentMessages: [
+                        {
+                            text: {
+                                text: ['Welcome to the WhatsApp bot!'],
+                            },
+                        },
+                    ],
+                });
+                break;
+            }
+
+        case 'About': {
+            res.send({
+                fulfillmentMessages: [
+                    {
+                        text: {
+                            text: ['This is a WhatsApp bot created using Dialogflow and Node.js.'],
+                        },
+                    },
+                ],
+            });
+            break;
+        }
+
+        default: {
+            res.send({
+                fulfillmentMessages: [
+                    {
+                        text: {
+                            text: ['Sorry, I don\'t understand.'],
+                        },
+                    },
+                ],
+            });
+        }
     }
 });
 
