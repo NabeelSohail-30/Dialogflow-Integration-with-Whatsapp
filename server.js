@@ -1,46 +1,84 @@
-const express = require("express");
-const body_parser = require("body-parser");
-const axios = require("axios");
-const uuid = require('uuid');
-require('dotenv').config();
+const express = require('express');
+const bodyParser = require('body-parser');
+const axios = require('axios');
+const { v4: uuid } = require('uuid');
+const dialogflow = require('dialogflow');
+const dotenv = require('dotenv');
 
-const app = express().use(body_parser.json());
+dotenv.config();
 
-app.get('/', (req, res) => {
-    res.sendStatus(200);
-});
-
-app.get('/ping', (req, res) => {
-    res.send('ping back');
-});
-
+const app = express();
+const port = process.env.PORT || 5005;
 const token = process.env.TOKEN;
 const mytoken = process.env.MYTOKEN;
 const dialogflowProjectId = process.env.DIALOGFLOW_PROJECT_ID;
-const dialogflowSessionId = uuid.v4();
-const dialogflowSessionClient = require('dialogflow').SessionsClient;
+
+const sessionClient = new dialogflow.SessionsClient();
+
+app.use(bodyParser.json());
 
 //to verify the callback url from dashboard side - cloud api side
-app.get("/webhook", (req, res) => {
-    let mode = req.query["hub.mode"];
-    let challange = req.query["hub.challenge"];
-    let token = req.query["hub.verify_token"];
+app.get('/webhook', (req, res) => {
+    const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': verifyToken } = req.query;
 
-    if (mode && token) {
-        if (mode === "subscribe" && token === mytoken) {
-            res.status(200).send(challange);
+    if (mode && verifyToken) {
+        if (mode === 'subscribe' && verifyToken === mytoken) {
+            res.status(200).send(challenge);
         } else {
-            res.status(403);
+            res.sendStatus(403);
         }
+    } else {
+        res.sendStatus(404);
+    }
+});
+
+app.post('/webhook', async (req, res) => {
+    try {
+        const { entry } = req.body;
+
+        if (!entry || !entry[0] || !entry[0].changes || !entry[0].changes[0].value || !entry[0].changes[0].value.messages || !entry[0].changes[0].value.messages[0]) {
+            throw new Error('Invalid request body');
+        }
+
+        const { metadata, messages } = entry[0].changes[0].value;
+        const { phone_number_id: phoneNumberId } = metadata;
+        const { from, text: { body: messageBody } } = messages[0];
+
+        const sessionPath = sessionClient.sessionPath(dialogflowProjectId, uuid());
+
+        const request = {
+            session: sessionPath,
+            queryInput: {
+                text: {
+                    text: messageBody,
+                    languageCode: 'en-US',
+                },
+            },
+        };
+
+        const responses = await sessionClient.detectIntent(request);
+        const result = responses[0].queryResult;
+
+        const sendMessageUrl = `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`;
+
+        await axios.post(sendMessageUrl, {
+            messaging_product: 'whatsapp',
+            to: from,
+            text: {
+                body: result.fulfillmentText,
+            },
+        });
+
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('Error occurred while processing webhook request', error);
+        res.sendStatus(500);
     }
 });
 
 // Dialogflow fulfillment webhook
 app.post('/dialogflow-fulfillment', async (req, res) => {
-    const text = req.body.queryResult.queryText;
     const intent = req.body.queryResult.intent.displayName;
-
-    console.log(`Received Dialogflow fulfillment request for intent '${intent}' and text '${text}'`);
 
     switch (intent) {
         case 'Default Welcome Intent':
@@ -84,78 +122,7 @@ app.post('/dialogflow-fulfillment', async (req, res) => {
     }
 });
 
-app.post("/webhook", (req, res) => {
-
-    let body_param = req.body;
-
-    console.log(JSON.stringify(body_param, null, 2));
-
-    if (body_param.object) {
-        console.log("inside body param");
-        if (body_param.entry &&
-            body_param.entry[0].changes &&
-            body_param.entry[0].changes[0].value.messages &&
-            body_param.entry[0].changes[0].value.messages[0]) {
-
-            let phon_no_id = body_param.entry[0].changes[0].value.metadata.phone_number_id;
-            let from = body_param.entry[0].changes[0].value.messages[0].from;
-            let msg_body = body_param.entry[0].changes[0].value.messages[0].text.body;
-
-            console.log("phone number " + phon_no_id);
-            console.log("from " + from);
-            console.log("boady param " + msg_body);
-
-            // Send message to Dialogflow
-            const sessionClient = new dialogflowSessionClient();
-            const sessionPath = sessionClient.sessionPath(dialogflowProjectId, dialogflowSessionId);
-
-            const request = {
-                session: sessionPath,
-                queryInput: {
-                    text: {
-                        text: msg_body,
-                        languageCode: 'en-US',
-                    },
-                },
-            };
-
-            sessionClient.detectIntent(request).then((responses) => {
-                const result = responses[0].queryResult;
-                console.log(`Received Dialogflow response for query '${result.queryText}'`);
-                console.log(`Response: ${result.fulfillmentText}`);
-
-                // Send response back to WhatsApp
-                axios({
-                    method:
-                        "POST",
-                    url: "https://graph.facebook.com/v13.0/" + phon_no_id + "/messages?access_token=" + token,
-                    data: {
-                        messaging_product: "whatsapp",
-                        to: from,
-                        text: {
-                            body: result.fulfillmentText // Send Dialogflow fulfillment text as WhatsApp message body
-                        }
-                    },
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
-                }); res.sendStatus(200);
-            })
-                .catch((err) => {
-                    console.error("Error occurred while sending message to Dialogflow", err);
-                    res.sendStatus(500);
-                });
-        } else {
-            res.sendStatus(404);
-        }
-    }
-    else {
-        res.sendStatus(404);
-    }
-});
-
 // Start server
-const port = process.env.PORT || 5005;
 app.listen(port, () => {
     console.log(`Server running on port ${port}`);
 });
