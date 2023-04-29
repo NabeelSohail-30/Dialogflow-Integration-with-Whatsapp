@@ -1,69 +1,128 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const axios = require('axios');
+const { v4: uuid } = require('uuid');
 const dialogflow = require('dialogflow');
-const openai = require('openai');
-const cors = require('cors');
 const dotenv = require('dotenv');
 
 dotenv.config();
+
 const app = express();
-app.use(express.json());
-app.use(cors());
+const port = process.env.PORT || 5005;
+const token = process.env.TOKEN;
+const mytoken = process.env.MYTOKEN;
+const dialogflowProjectId = process.env.DIALOGFLOW_PROJECT_ID;
+
+const sessionClient = new dialogflow.SessionsClient();
+
 app.use(bodyParser.json());
 
-app.get('/', (req, res) => {
-    res.sendStatus(200);
+//to verify the callback url from dashboard side - cloud api side
+app.get('/webhook', (req, res) => {
+    const { 'hub.mode': mode, 'hub.challenge': challenge, 'hub.verify_token': verifyToken } = req.query;
+
+    if (mode && verifyToken) {
+        if (mode === 'subscribe' && verifyToken === mytoken) {
+            res.status(200).send(challenge);
+        } else {
+            res.sendStatus(403);
+        }
+    } else {
+        res.sendStatus(404);
+    }
 });
 
-app.get('/ping', (req, res) => {
-    res.send('ping back');
-});
-
-const port = process.env.PORT || 5001;
-
-// Set up the OpenAI API credentials
-const openaiApiKey = procees.env.API_KEY;
-const openaiApi = new openai.Auth({ api_key: openaiApiKey });
-
-// Set up the Dialogflow client
-const dialogflowProjectId = 'YOUR_DIALOGFLOW_PROJECT_ID';
-const dialogflowSessionId = 'YOUR_DIALOGFLOW_SESSION_ID';
-const dialogflowLanguageCode = 'en-US';
-const dialogflowClient = new dialogflow.SessionsClient();
-const dialogflowSessionPath = dialogflowClient.sessionPath(dialogflowProjectId, dialogflowSessionId);
-
-// Handle incoming messages from Dialogflow
 app.post('/webhook', async (req, res) => {
-    const message = req.body.queryResult.queryText;
+    try {
+        const { entry } = req.body;
 
-    // Send the message to OpenAI
-    const openaiResponse = await openaiApi.completions.create({
-        engine: 'davinci',
-        prompt: message,
-        max_tokens: 100,
-        n: 1,
-        stop: '\n',
-    });
+        if (!entry || !entry[0] || !entry[0].changes || !entry[0].changes[0].value || !entry[0].changes[0].value.messages || !entry[0].changes[0].value.messages[0]) {
+            throw new Error('Invalid request body');
+        }
 
-    const response = openaiResponse.data.choices[0].text.trim();
+        const { metadata, messages } = entry[0].changes[0].value;
+        const { phone_number_id: phoneNumberId } = metadata;
+        const { from, text: { body: messageBody } } = messages[0];
 
-    // Send the OpenAI response back to Dialogflow
-    const dialogflowRequest = {
-        session: dialogflowSessionPath,
-        queryInput: {
-            text: {
-                text: response,
-                languageCode: dialogflowLanguageCode,
+        const sessionPath = sessionClient.sessionPath(dialogflowProjectId, uuid());
+
+        const request = {
+            session: sessionPath,
+            queryInput: {
+                text: {
+                    text: messageBody,
+                    languageCode: 'en-US',
+                },
             },
-        },
-    };
+        };
 
-    const dialogflowResponse = await dialogflowClient.detectIntent(dialogflowRequest);
+        const responses = await sessionClient.detectIntent(request);
+        const result = responses[0].queryResult;
 
-    res.json(dialogflowResponse[0].queryResult);
+        const sendMessageUrl = `https://graph.facebook.com/v13.0/${phoneNumberId}/messages?access_token=${token}`;
+
+        await axios.post(sendMessageUrl, {
+            messaging_product: 'whatsapp',
+            to: from,
+            text: {
+                body: result.fulfillmentText,
+            },
+        });
+
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('Error occurred while processing webhook request', error);
+        res.sendStatus(500);
+    }
 });
 
-// Start the server
+// Dialogflow fulfillment webhook
+app.post('/dialogflow-fulfillment', async (req, res) => {
+    const intent = req.body.queryResult.intent.displayName;
+
+    switch (intent) {
+        case 'Default Welcome Intent':
+            {
+                res.send({
+                    fulfillmentMessages: [
+                        {
+                            text: {
+                                text: ['Welcome to the WhatsApp bot!'],
+                            },
+                        },
+                    ],
+                });
+                break;
+            }
+
+        case 'About': {
+            res.send({
+                fulfillmentMessages: [
+                    {
+                        text: {
+                            text: ['This is a WhatsApp bot created using Dialogflow and Node.js.'],
+                        },
+                    },
+                ],
+            });
+            break;
+        }
+
+        default: {
+            res.send({
+                fulfillmentMessages: [
+                    {
+                        text: {
+                            text: ['Sorry, I don\'t understand.'],
+                        },
+                    },
+                ],
+            });
+        }
+    }
+});
+
+// Start server
 app.listen(port, () => {
-    console.log('Server started on port 3000');
+    console.log(`Server running on port ${port}`);
 });
