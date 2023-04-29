@@ -6,7 +6,6 @@ const dialogflow = require('dialogflow');
 const dotenv = require('dotenv');
 
 dotenv.config();
-
 const app = express();
 const port = process.env.PORT || 5005;
 const token = process.env.TOKEN;
@@ -87,7 +86,7 @@ app.post('/dialogflow-fulfillment', async (req, res) => {
                     fulfillmentMessages: [
                         {
                             text: {
-                                text: ['Welcome to the WhatsApp bot!'],
+                                text: ['Welcome to the WhatsApp bot! Integrated with dialogflow'],
                             },
                         },
                     ],
