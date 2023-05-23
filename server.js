@@ -12,9 +12,9 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 // Configure Twilio credentials
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
+const accountSid = process.env.ACCOUNT_SID;
+const authToken = process.env.AUTH_TOKEN;
+const myTwilioPhoneNumber = process.env.TWILIO_PHONE_NUMBER;
 
 const twilioClient = twilio(accountSid, authToken);
 
@@ -50,7 +50,7 @@ function sendMessage(to, message) {
     twilioClient.messages
         .create({
             body: message,
-            from: twilioPhoneNumber,
+            from: myTwilioPhoneNumber,
             to: to
         })
         .then(message => console.log(`Sent message: ${message.sid}`))
@@ -67,7 +67,7 @@ app.post('/twilio-webhook', async (req, res) => {
     // by sending the user's phone number along with the request
 
     const request = {
-        session: 'projects/your-project-id/agent/sessions/unique-session-id',
+        session: 'projects/whatsappintegrationtest-nnlv/agent/sessions/unique-session-id',
         queryInput: {
             text: {
                 text: messageBody,
@@ -88,8 +88,8 @@ app.post('/twilio-webhook', async (req, res) => {
     twilioClient.messages
         .create({
             body: messageBody,
-            from: twilioPhoneNumber,
-            to: twilioPhoneNumber // Replace with your Twilio phone number
+            from: myTwilioPhoneNumber,
+            to: from // Replace with your Twilio phone number
         })
         .then(() => {
             res.status(200).end();
