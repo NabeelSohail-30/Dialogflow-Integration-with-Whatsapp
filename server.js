@@ -93,7 +93,7 @@ app.post('/twilio-webhook', async (req, res) => {
         .create({
             body: messageBody,
             from: myTwilioPhoneNumber,
-            to: from // Replace with your Twilio phone number
+            to: from.whatsapp // Replace with your Twilio phone number
         })
         .then(() => {
             res.status(200).end();
