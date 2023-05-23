@@ -62,6 +62,10 @@ app.post('/twilio-webhook', async (req, res) => {
     const messageBody = req.body.Body;
     const from = req.body.From;
 
+    console.log(messageBody);
+    console.log(from);
+    console.log(myTwilioPhoneNumber);
+
     // Pass the incoming message to Dialogflow for processing
     // and handle the response in the '/dialogflow-fulfillment' route
     // by sending the user's phone number along with the request
