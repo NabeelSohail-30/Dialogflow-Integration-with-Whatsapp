@@ -1,6 +1,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const dialogflow = require('dialogflow');
+const { SessionsClient } = require('@google-cloud/dialogflow');
 const dotenv = require('dotenv');
 const twilio = require('twilio');
 
@@ -58,7 +58,7 @@ function sendMessage(to, message) {
 }
 
 // Twilio webhook to receive incoming messages from WhatsApp
-app.post('/twilio-webhook', async (req, res) => {
+app.post('/whatsapp', async (req, res) => {
     const messageBody = req.body.Body;
     const from = req.body.From;
 
@@ -70,38 +70,31 @@ app.post('/twilio-webhook', async (req, res) => {
     // and handle the response in the '/dialogflow-fulfillment' route
     // by sending the user's phone number along with the request
 
+    const sessionClient = new SessionsClient();
+    const projectId = process.env.DIALOGFLOW_PROJECT_ID;
+    const sessionPath = sessionClient.projectAgentSessionPath(projectId, from);
+    const languageCode = 'en-US';
+
     const request = {
-        session: 'projects/whatsappintegrationtest-nnlv/agent/sessions/unique-session-id',
+        session: sessionPath,
         queryInput: {
             text: {
                 text: messageBody,
-                languageCode: 'en-US',
+                languageCode: languageCode,
             },
         },
-        originalDetectIntentRequest: {
-            payload: {
-                data: {
-                    From: from
-                }
-            }
-        }
     };
 
-    // Send the request to Dialogflow
-    // and handle the response in the '/dialogflow-fulfillment' route
-    twilioClient.messages
-        .create({
-            body: messageBody,
-            from: myTwilioPhoneNumber,
-            to: from
-        })
-        .then(() => {
-            res.status(200).end();
+    sessionClient.detectIntent(request)
+        .then(responses => {
+            const fulfillmentText = responses[0].queryResult.fulfillmentText;
+            sendMessage(from, fulfillmentText);
         })
         .catch(error => {
             console.error(`Error sending message: ${error.message}`);
-            res.status(500).end();
         });
+
+    res.status(200).end();
 });
 
 // Start server
